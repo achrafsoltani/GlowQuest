@@ -6,8 +6,31 @@ import (
 	"github.com/AchrafSoltani/GlowQuest/config"
 )
 
+type EnemySpawn struct {
+	Type  int // maps to entity.EnemyType (0=Octorok, 1=Moblin, 2=Stalfos)
+	TileX int
+	TileY int
+}
+
+type ItemSpawn struct {
+	Type  int // maps to entity.ItemType
+	TileX int
+	TileY int
+}
+
+type NPCSpawn struct {
+	TileX    int
+	TileY    int
+	Dir      int // maps to entity.Direction
+	Name     string
+	Dialogue []string
+}
+
 type Screen struct {
-	Tiles [config.ScreenGridH][config.ScreenGridW]TileType
+	Tiles       [config.ScreenGridH][config.ScreenGridW]TileType
+	EnemySpawns []EnemySpawn
+	ItemSpawns  []ItemSpawn
+	NPCSpawns   []NPCSpawn
 }
 
 func (s *Screen) LoadFromString(data string) {
@@ -28,8 +51,6 @@ func (s *Screen) TileAt(gx, gy int) TileType {
 }
 
 // VillageScreen is the starting screen at (1,1) centre of the overworld.
-// Houses (wall rectangles), paths (sand), central well (water).
-// Open passages on all 4 edges (facing other screens).
 func VillageScreen() *Screen {
 	s := &Screen{}
 	s.LoadFromString(
@@ -45,12 +66,32 @@ func VillageScreen() *Screen {
 			".WFFW......WFFW.\n" +
 			".WOOW......WOOW.\n" +
 			"......SSSS......")
+
+	// Sword near the well
+	s.ItemSpawns = []ItemSpawn{
+		{Type: 3, TileX: 8, TileY: 7}, // ItemSword
+	}
+
+	// NPCs
+	s.NPCSpawns = []NPCSpawn{
+		{TileX: 3, TileY: 7, Dir: 0, Name: "Old Man",
+			Dialogue: []string{
+				"It's dangerous to go",
+				"alone! Take the sword",
+				"by the well.",
+			}},
+		{TileX: 12, TileY: 3, Dir: 0, Name: "Merchant",
+			Dialogue: []string{
+				"Welcome to our village.",
+				"The ruins to the south-",
+				"east hold great treasure.",
+			}},
+	}
+
 	return s
 }
 
 // ForestScreen is at (0,0) — dense trees with narrow grass paths.
-// Open on right edge (faces ForestPath) and bottom edge (faces LakeShore).
-// Walls on top and left (world boundary).
 func ForestScreen() *Screen {
 	s := &Screen{}
 	s.LoadFromString(
@@ -66,12 +107,19 @@ func ForestScreen() *Screen {
 			"W...............\n" +
 			"W.TT..TT..TT...\n" +
 			"......TT........")
+
+	s.EnemySpawns = []EnemySpawn{
+		{Type: 0, TileX: 5, TileY: 4},  // Octorok
+		{Type: 0, TileX: 10, TileY: 8}, // Octorok
+	}
+	s.ItemSpawns = []ItemSpawn{
+		{Type: 1, TileX: 8, TileY: 2},  // Rupee
+		{Type: 0, TileX: 13, TileY: 5}, // Heart
+	}
 	return s
 }
 
 // ForestPathScreen is at (1,0) — tree-lined east-west path.
-// Open on left (faces Forest), right (faces Mountain), bottom (faces Village).
-// Wall on top (world boundary).
 func ForestPathScreen() *Screen {
 	s := &Screen{}
 	s.LoadFromString(
@@ -87,12 +135,23 @@ func ForestPathScreen() *Screen {
 			"................\n" +
 			"..TT..TT..TT...\n" +
 			"......SSSS......")
+
+	s.EnemySpawns = []EnemySpawn{
+		{Type: 1, TileX: 4, TileY: 2},  // Moblin
+		{Type: 0, TileX: 12, TileY: 9}, // Octorok
+	}
+	s.NPCSpawns = []NPCSpawn{
+		{TileX: 8, TileY: 8, Dir: 0, Name: "Traveller",
+			Dialogue: []string{
+				"Beware the mountain.",
+				"Many Moblins lurk",
+				"there.",
+			}},
+	}
 	return s
 }
 
 // MountainScreen is at (2,0) — walls forming mountain shapes, narrow passages.
-// Open on left (faces ForestPath), bottom (faces EastField).
-// Walls on top and right (world boundary).
 func MountainScreen() *Screen {
 	s := &Screen{}
 	s.LoadFromString(
@@ -108,12 +167,19 @@ func MountainScreen() *Screen {
 			"..WW..........WW\n" +
 			"..........WW...W\n" +
 			"......SSSS....WW")
+
+	s.EnemySpawns = []EnemySpawn{
+		{Type: 1, TileX: 5, TileY: 3},  // Moblin
+		{Type: 1, TileX: 10, TileY: 7}, // Moblin
+		{Type: 2, TileX: 3, TileY: 9},  // Stalfos
+	}
+	s.ItemSpawns = []ItemSpawn{
+		{Type: 2, TileX: 8, TileY: 4}, // Key
+	}
 	return s
 }
 
 // LakeShoreScreen is at (0,1) — large water body on the right, sand beach.
-// Open on top (faces Forest), right (faces Village), bottom (faces Swamp).
-// Wall on left (world boundary).
 func LakeShoreScreen() *Screen {
 	s := &Screen{}
 	s.LoadFromString(
@@ -129,12 +195,18 @@ func LakeShoreScreen() *Screen {
 			"W.......SSS~~~~~\n" +
 			"W..........SS~~~\n" +
 			"W.....SS........")
+
+	s.EnemySpawns = []EnemySpawn{
+		{Type: 0, TileX: 3, TileY: 3}, // Octorok
+		{Type: 0, TileX: 5, TileY: 8}, // Octorok
+	}
+	s.ItemSpawns = []ItemSpawn{
+		{Type: 4, TileX: 3, TileY: 6}, // HeartContainer
+	}
 	return s
 }
 
 // EastFieldScreen is at (2,1) — open grass with scattered trees and rocks.
-// Open on left (faces Village), top (faces Mountain), bottom (faces Ruins).
-// Wall on right (world boundary).
 func EastFieldScreen() *Screen {
 	s := &Screen{}
 	s.LoadFromString(
@@ -150,12 +222,15 @@ func EastFieldScreen() *Screen {
 			"...............W\n" +
 			"...TT.....TT...W\n" +
 			"......SSSS.....W")
+
+	s.EnemySpawns = []EnemySpawn{
+		{Type: 1, TileX: 6, TileY: 3},  // Moblin
+		{Type: 0, TileX: 10, TileY: 8}, // Octorok
+	}
 	return s
 }
 
 // SwampScreen is at (0,2) — mix of water and grass in irregular patterns.
-// Open on top (faces LakeShore), right (faces SouthField).
-// Walls on left and bottom (world boundary).
 func SwampScreen() *Screen {
 	s := &Screen{}
 	s.LoadFromString(
@@ -171,12 +246,15 @@ func SwampScreen() *Screen {
 			"W..~~......~~...\n" +
 			"W...............\n" +
 			"WWWWWWWWWWWWWWWW")
+
+	s.EnemySpawns = []EnemySpawn{
+		{Type: 2, TileX: 5, TileY: 5},  // Stalfos
+		{Type: 2, TileX: 11, TileY: 9}, // Stalfos
+	}
 	return s
 }
 
 // SouthFieldScreen is at (1,2) — open field with sand paths.
-// Open on top (faces Village), left (faces Swamp), right (faces Ruins).
-// Wall on bottom (world boundary).
 func SouthFieldScreen() *Screen {
 	s := &Screen{}
 	s.LoadFromString(
@@ -192,12 +270,14 @@ func SouthFieldScreen() *Screen {
 			"..TT..SSSS..TT..\n" +
 			"......SSSS......\n" +
 			"WWWWWWWWWWWWWWWW")
+
+	s.EnemySpawns = []EnemySpawn{
+		{Type: 1, TileX: 4, TileY: 5}, // Moblin
+	}
 	return s
 }
 
 // RuinsScreen is at (2,2) — broken wall formations, floor tiles, stairs.
-// Open on top (faces EastField), left (faces SouthField).
-// Walls on right and bottom (world boundary).
 func RuinsScreen() *Screen {
 	s := &Screen{}
 	s.LoadFromString(
@@ -213,5 +293,24 @@ func RuinsScreen() *Screen {
 			"..WW..WWW..WW..W\n" +
 			"..WW..WFW..WW..W\n" +
 			"WWWWWWWWWWWWWWWW")
+
+	s.EnemySpawns = []EnemySpawn{
+		{Type: 2, TileX: 5, TileY: 5},  // Stalfos
+		{Type: 2, TileX: 10, TileY: 5}, // Stalfos
+		{Type: 1, TileX: 8, TileY: 8},  // Moblin
+	}
+	s.ItemSpawns = []ItemSpawn{
+		{Type: 2, TileX: 4, TileY: 7},  // Key
+		{Type: 1, TileX: 11, TileY: 7}, // Rupee
+		{Type: 1, TileX: 12, TileY: 6}, // Rupee
+	}
+	s.NPCSpawns = []NPCSpawn{
+		{TileX: 8, TileY: 6, Dir: 0, Name: "Ghost",
+			Dialogue: []string{
+				"You've found the",
+				"ancient ruins. The",
+				"stairs lead deeper...",
+			}},
+	}
 	return s
 }

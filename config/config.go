@@ -21,4 +21,39 @@ const (
 	TransitionDuration = 0.5 // seconds for screen scroll transition
 	OverworldW         = 3
 	OverworldH         = 3
+
+	// Combat
+	SwordDuration   = 0.2
+	SwordReach      = 12
+	SwordWidth      = 10
+	KnockbackDist   = 32.0
+	KnockbackTime   = 0.15
+	PlayerInvTime   = 1.0
+	EnemyInvTime    = 0.5
+	ProjectileSpeed = 100.0
+
+	// Items
+	ItemBobSpeed  = 4.0
+	ItemBobAmount = 1
+
+	// Dialogue
+	DialogueBoxH  = 48
+	InteractRadius = 20.0
+
+	// Interior transitions
+	FadeDuration = 0.6
+
+	// Boss
+	BossHP    = 10
+	BossSize  = 20
+	BossSpeed = 25.0
+
+	// Polish
+	ShakeDuration  = 0.2
+	ShakeIntensity = 3
+	FlashDuration  = 0.08
+
+	// Menu
+	GameOverDelay = 2.0
+	VictoryDelay  = 3.0
 )

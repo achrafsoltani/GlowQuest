@@ -4,6 +4,7 @@ import (
 	"github.com/AchrafSoltani/GlowQuest/config"
 	"github.com/AchrafSoltani/GlowQuest/entity"
 	"github.com/AchrafSoltani/GlowQuest/world"
+	"github.com/AchrafSoltani/glow"
 )
 
 func DrawScreen(sc *ScaledCanvas, screen *world.Screen) {
@@ -41,6 +42,49 @@ func DrawTransition(sc *ScaledCanvas, oldScreen, newScreen *world.Screen, player
 
 	// Draw player on the new screen, offset by the new screen's slide amount
 	DrawPlayerAt(sc, player, newOffX, newOffY)
+}
+
+// 4×4 Bayer ordered dithering matrix (values 0–15)
+var bayerMatrix = [4][4]int{
+	{0, 8, 2, 10},
+	{12, 4, 14, 6},
+	{3, 11, 1, 9},
+	{15, 7, 13, 5},
+}
+
+// DrawFade draws a black overlay using 4×4 Bayer ordered dithering for smooth fade.
+func DrawFade(sc *ScaledCanvas, progress float64) {
+	if progress <= 0 {
+		return
+	}
+	if progress >= 1.0 {
+		sc.DrawRect(0, config.HUDHeight, config.PlayAreaWidth, config.PlayAreaHeight, ColorBG)
+		return
+	}
+	threshold := int(progress * 16)
+	for y := 0; y < config.PlayAreaHeight; y++ {
+		for x := 0; x < config.PlayAreaWidth; x++ {
+			if bayerMatrix[y%4][x%4] < threshold {
+				sc.SetPixel(x, config.HUDHeight+y, ColorBG)
+			}
+		}
+	}
+}
+
+// DrawFlash draws a white dithered overlay for item pickup flash.
+func DrawFlash(sc *ScaledCanvas, intensity float64) {
+	if intensity <= 0 {
+		return
+	}
+	white := glow.RGB(255, 255, 255)
+	threshold := int(intensity * 16)
+	for y := 0; y < config.PlayAreaHeight; y++ {
+		for x := 0; x < config.PlayAreaWidth; x++ {
+			if bayerMatrix[y%4][x%4] < threshold {
+				sc.SetPixel(x, config.HUDHeight+y, white)
+			}
+		}
+	}
 }
 
 func drawTile(sc *ScaledCanvas, tile world.TileType, gx, gy int) {

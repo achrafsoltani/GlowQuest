@@ -12,6 +12,10 @@ type Player struct {
 	Moving    bool
 	WalkFrame int
 	WalkTimer float64
+	Sword     SwordSwing
+	InvTimer  float64
+	HasSword  bool
+	Inventory Inventory
 }
 
 func NewPlayer(x, y float64) *Player {

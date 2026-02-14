@@ -26,4 +26,14 @@ var (
 	ColorBoot  = glow.RGB(120, 70, 30)
 
 	ColorBG = glow.RGB(15, 15, 15)
+
+	// Menu
+	ColorMenuTitle    = glow.RGB(100, 220, 140)
+	ColorMenuDisabled = glow.RGB(80, 80, 80)
+	ColorVictoryGold  = glow.RGB(230, 190, 50)
+
+	// Boss
+	ColorBoss     = glow.RGB(100, 40, 120)
+	ColorBossDark = glow.RGB(60, 20, 80)
+	ColorBossEye  = glow.RGB(255, 40, 40)
 )

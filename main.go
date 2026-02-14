@@ -50,8 +50,19 @@ func main() {
 				if event.Key == glow.KeyF11 {
 					win.SetFullscreen(!win.IsFullscreen())
 				}
-				if event.Key == glow.KeyEscape {
-					running = false
+				// ESC in menu quits; otherwise delegated to game
+				if event.Key == glow.KeyEscape && g.State == game.StateMenu {
+					g.ShouldQuit = true
+				}
+				// Audio controls
+				if event.Key == glow.KeyM {
+					g.ToggleMute()
+				}
+				if event.Key == glow.KeyEqual {
+					g.VolumeUp()
+				}
+				if event.Key == glow.KeyMinus {
+					g.VolumeDown()
 				}
 				g.KeyDown(event.Key)
 			case glow.EventKeyUp:
@@ -59,6 +70,10 @@ func main() {
 			case glow.EventWindowResize:
 				g.OnResize(event.Width, event.Height)
 			}
+		}
+
+		if g.ShouldQuit {
+			running = false
 		}
 
 		g.Update(dt)

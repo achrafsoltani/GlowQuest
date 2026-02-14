@@ -3,7 +3,10 @@ package game
 type GameState int
 
 const (
-	StatePlaying GameState = iota
+	StateMenu     GameState = iota
+	StatePlaying
 	StatePaused
 	StateGameOver
+	StateDialogue
+	StateVictory
 )

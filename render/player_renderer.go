@@ -3,7 +3,10 @@ package render
 import (
 	"github.com/AchrafSoltani/GlowQuest/config"
 	"github.com/AchrafSoltani/GlowQuest/entity"
+	"github.com/AchrafSoltani/glow"
 )
+
+var ColorSwordBlade = glow.RGB(200, 200, 220)
 
 func DrawPlayer(sc *ScaledCanvas, p *entity.Player) {
 	DrawPlayerAt(sc, p, 0, 0)
@@ -11,6 +14,14 @@ func DrawPlayer(sc *ScaledCanvas, p *entity.Player) {
 
 // DrawPlayerAt draws the player with a pixel offset (for scrolling transitions).
 func DrawPlayerAt(sc *ScaledCanvas, p *entity.Player, offsetX, offsetY int) {
+	// Flash during invincibility (skip draw on alternating frames)
+	if p.InvTimer > 0 {
+		frame := int(p.InvTimer * 20)
+		if frame%2 == 0 {
+			return
+		}
+	}
+
 	// Player is drawn in the play area (offset by HUD height)
 	px := int(p.X) + offsetX
 	py := int(p.Y) + config.HUDHeight + offsetY
@@ -35,6 +46,28 @@ func DrawPlayerAt(sc *ScaledCanvas, p *entity.Player, offsetX, offsetY int) {
 		drawPlayerLeft(sc, px, py, legOff)
 	case entity.DirRight:
 		drawPlayerRight(sc, px, py, legOff)
+	}
+
+	// Draw sword if swinging
+	if p.Sword.Active {
+		drawSword(sc, px, py, p.Dir, p.Sword.Progress())
+	}
+}
+
+func drawSword(sc *ScaledCanvas, px, py int, dir entity.Direction, progress float64) {
+	// Sword blade extending from player
+	reach := config.SwordReach
+	w := 2
+
+	switch dir {
+	case entity.DirUp:
+		sc.DrawRect(px+6, py-reach, w, reach, ColorSwordBlade)
+	case entity.DirDown:
+		sc.DrawRect(px+6, py+14, w, reach, ColorSwordBlade)
+	case entity.DirLeft:
+		sc.DrawRect(px-reach, py+6, reach, w, ColorSwordBlade)
+	case entity.DirRight:
+		sc.DrawRect(px+14, py+6, reach, w, ColorSwordBlade)
 	}
 }
 
