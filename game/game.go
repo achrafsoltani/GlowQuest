@@ -13,6 +13,15 @@ import (
 	"github.com/AchrafSoltani/glow"
 )
 
+// LocationType identifies what kind of area the player is in.
+type LocationType int
+
+const (
+	LocationOverworld LocationType = iota
+	LocationInterior
+	LocationDungeon
+)
+
 type Game struct {
 	State      GameState
 	Player     *entity.Player
@@ -43,6 +52,15 @@ type Game struct {
 	CurrentInterior *world.InteriorDef
 	ReturnLink      *world.DoorLink
 
+	// Location tracking
+	Location LocationType
+
+	// Dungeon support (Phase 8+)
+	CurrentDungeon *world.Dungeon
+
+	// Quest state
+	Quest *QuestState
+
 	// Fade transition state for interiors
 	PendingInterior *world.InteriorDef
 	PendingDoorLink *world.DoorLink
@@ -61,6 +79,10 @@ type Game struct {
 
 	// Boss
 	BossDefeated bool
+
+	// Inventory screen cursor
+	InventoryCursorX int
+	InventoryCursorY int
 }
 
 func NewGame() *Game {
@@ -74,32 +96,87 @@ func NewGame() *Game {
 		Audio:          audio.NewEngine(),
 		Menu:           NewMenuState(save.Exists()),
 		Particles:      entity.NewParticlePool(),
+		Quest:          NewQuestState(),
 	}
 	return g
 }
 
 func (g *Game) initWorld() {
 	g.Overworld = world.NewOverworld()
-	g.Interiors = world.BuildInteriors()
-	g.DoorLinks = world.BuildDoorLinks()
+	g.Interiors, _ = world.LoadInteriors()
+	g.DoorLinks = world.BuildDoorLinksFromScreens(g.Overworld.Screens)
 }
 
 func (g *Game) StartNewGame() {
-	startX := float64(7*config.TileSize) + 1
-	startY := float64(7*config.TileSize) + 1
+	g.initWorld()
+
+	meta := world.LoadOverworldMeta()
+	startX := meta.StartPos[0]
+	startY := meta.StartPos[1]
 
 	g.Player = entity.NewPlayer(startX, startY)
-	g.initWorld()
 	g.CollectedItems = make(map[string]bool)
 	g.UnlockedDoors = make(map[string]bool)
 	g.InInterior = false
 	g.CurrentInterior = nil
 	g.ReturnLink = nil
+	g.Location = LocationOverworld
+	g.CurrentDungeon = nil
 	g.BossDefeated = false
+	g.Quest = NewQuestState()
 	g.Particles = entity.NewParticlePool()
 	g.ShakeTimer = 0
 	g.FlashTimer = 0
 	g.State = StatePlaying
+
+	g.Quest.SetFlag("game_started")
+
+	// Start in interior if configured
+	if meta.StartInterior != "" {
+		interior, ok := g.Interiors[meta.StartInterior]
+		if ok {
+			g.InInterior = true
+			g.Location = LocationInterior
+			g.CurrentInterior = interior
+			// Place player in the centre of the interior
+			g.Player.X = float64(config.PlayAreaWidth/2 - g.Player.Width/2)
+			g.Player.Y = float64(config.PlayAreaHeight/2 - g.Player.Height/2)
+			// Find a door link back to overworld for this interior
+			for i := range g.DoorLinks {
+				if g.DoorLinks[i].InteriorID == meta.StartInterior {
+					g.ReturnLink = &g.DoorLinks[i]
+					break
+				}
+			}
+			// Also check the interior's own door links for overworld exit
+			if g.ReturnLink == nil {
+				for i := range interior.DoorLinks {
+					if interior.DoorLinks[i].InteriorID == "overworld" {
+						// Create a synthetic return link — exit one tile below the door
+						exitX := interior.DoorLinks[i].ExitX
+						exitY := interior.DoorLinks[i].ExitY
+						if exitX == 0 && exitY == 0 {
+							exitX = meta.StartPos[0]
+							exitY = meta.StartPos[1]
+						}
+						g.ReturnLink = &world.DoorLink{
+							ScreenX:    meta.StartScreen[0],
+							ScreenY:    meta.StartScreen[1],
+							DoorTileX:  interior.DoorLinks[i].DoorTileX,
+							DoorTileY:  interior.DoorLinks[i].DoorTileY,
+							InteriorID: meta.StartInterior,
+							SpawnX:     g.Player.X,
+							SpawnY:     g.Player.Y,
+							ExitX:      exitX,
+							ExitY:      exitY,
+						}
+						break
+					}
+				}
+			}
+		}
+	}
+
 	g.spawnScreenEntities()
 }
 
@@ -111,12 +188,49 @@ func (g *Game) StartContinue() {
 	}
 
 	g.initWorld()
+
+	// Handle V2 save data
 	g.Player = entity.NewPlayer(data.PlayerX, data.PlayerY)
 	g.Player.HasSword = data.HasSword
 	g.Player.MaxHP = data.MaxHP
 	g.Player.HP = data.HP
 	g.Player.Inventory.Rupees = data.Rupees
 	g.Player.Inventory.Keys = data.Keys
+
+	// Load V2 inventory fields if present
+	if data.Version >= 2 {
+		g.Player.Inventory.Bombs = data.Bombs
+		g.Player.Inventory.Arrows = data.Arrows
+		g.Player.Inventory.SwordLevel = data.SwordLevel
+		g.Player.Inventory.ShieldLevel = data.ShieldLevel
+		g.Player.Inventory.BraceletLevel = data.BraceletLevel
+		g.Player.Inventory.ButtonA = entity.EquipItemID(data.ButtonA)
+		g.Player.Inventory.ButtonB = entity.EquipItemID(data.ButtonB)
+		for _, id := range data.OwnedItems {
+			g.Player.Inventory.OwnedItems[entity.EquipItemID(id)] = true
+		}
+		// Restore quest state
+		if data.Quest != nil {
+			g.Quest.Flags = data.Quest.Flags
+			if g.Quest.Flags == nil {
+				g.Quest.Flags = make(map[string]bool)
+			}
+			g.Quest.DungeonsCompleted = data.Quest.DungeonsCompleted
+			g.Quest.TradingItem = data.Quest.TradingItem
+		}
+	}
+
+	// Backwards compat: if player has sword but no equip, auto-assign
+	if g.Player.HasSword && !g.Player.Inventory.OwnedItems[entity.EquipSword] {
+		g.Player.Inventory.OwnedItems[entity.EquipSword] = true
+		if g.Player.Inventory.SwordLevel == 0 {
+			g.Player.Inventory.SwordLevel = 1
+		}
+		if g.Player.Inventory.ButtonA == entity.EquipNone {
+			g.Player.Inventory.ButtonA = entity.EquipSword
+		}
+	}
+
 	g.CollectedItems = data.CollectedItems
 	if g.CollectedItems == nil {
 		g.CollectedItems = make(map[string]bool)
@@ -129,6 +243,7 @@ func (g *Game) StartContinue() {
 	g.Particles = entity.NewParticlePool()
 	g.ShakeTimer = 0
 	g.FlashTimer = 0
+	g.Location = LocationOverworld
 
 	g.Overworld.CurrentX = data.ScreenX
 	g.Overworld.CurrentY = data.ScreenY
@@ -138,6 +253,7 @@ func (g *Game) StartContinue() {
 		if ok {
 			g.InInterior = true
 			g.CurrentInterior = interior
+			g.Location = LocationInterior
 			// Find the door link for return
 			for i := range g.DoorLinks {
 				if g.DoorLinks[i].InteriorID == data.InteriorID {
@@ -154,11 +270,19 @@ func (g *Game) StartContinue() {
 
 func (g *Game) SaveGame() {
 	data := &save.SaveData{
+		Version:        2,
 		HasSword:       g.Player.HasSword,
 		MaxHP:          g.Player.MaxHP,
 		HP:             g.Player.HP,
 		Rupees:         g.Player.Inventory.Rupees,
 		Keys:           g.Player.Inventory.Keys,
+		Bombs:          g.Player.Inventory.Bombs,
+		Arrows:         g.Player.Inventory.Arrows,
+		SwordLevel:     g.Player.Inventory.SwordLevel,
+		ShieldLevel:    g.Player.Inventory.ShieldLevel,
+		BraceletLevel:  g.Player.Inventory.BraceletLevel,
+		ButtonA:        int(g.Player.Inventory.ButtonA),
+		ButtonB:        int(g.Player.Inventory.ButtonB),
 		CollectedItems: g.CollectedItems,
 		UnlockedDoors:  g.UnlockedDoors,
 		ScreenX:        g.Overworld.CurrentX,
@@ -168,6 +292,19 @@ func (g *Game) SaveGame() {
 		InInterior:     g.InInterior,
 		BossDefeated:   g.BossDefeated,
 	}
+
+	// Save owned items as int slice
+	for id := range g.Player.Inventory.OwnedItems {
+		data.OwnedItems = append(data.OwnedItems, int(id))
+	}
+
+	// Save quest state
+	data.Quest = &save.QuestSaveData{
+		Flags:              g.Quest.Flags,
+		DungeonsCompleted:  g.Quest.DungeonsCompleted,
+		TradingItem:        g.Quest.TradingItem,
+	}
+
 	if g.InInterior && g.CurrentInterior != nil {
 		data.InteriorID = g.CurrentInterior.ID
 	}
@@ -202,6 +339,8 @@ func (g *Game) Update(dt float64) {
 		g.updateVictory(dt)
 	case StateDialogue:
 		g.updateDialogue()
+	case StateInventory:
+		g.updateInventory()
 	case StatePlaying:
 		g.updatePlaying(dt)
 	}
@@ -233,7 +372,7 @@ func (g *Game) updateMenu() {
 }
 
 func (g *Game) updatePaused() {
-	if g.Input.JustPressed(glow.KeyEscape) {
+	if g.Input.JustPressed(glow.KeyEscape) || g.Input.JustPressed(glow.KeyEnter) {
 		g.State = StatePlaying
 	}
 }
@@ -261,7 +400,7 @@ func (g *Game) updateVictory(dt float64) {
 }
 
 func (g *Game) updateDialogue() {
-	if g.Input.JustPressed(glow.KeySpace) || g.Input.JustPressed(glow.KeyZ) {
+	if g.Input.JustPressed(glow.KeySpace) || g.Input.JustPressed(glow.KeyJ) {
 		done := g.Dialogue.Advance()
 		if done {
 			g.State = StatePlaying
@@ -269,10 +408,61 @@ func (g *Game) updateDialogue() {
 	}
 }
 
+func (g *Game) updateInventory() {
+	if g.Input.JustPressed(glow.KeyTab) || g.Input.JustPressed(glow.KeyEscape) {
+		g.State = StatePlaying
+	}
+
+	// Navigate inventory grid
+	if g.Input.JustPressed(glow.KeyUp) || g.Input.JustPressed(glow.KeyW) {
+		g.InventoryCursorY--
+		if g.InventoryCursorY < 0 {
+			g.InventoryCursorY = 0
+		}
+	}
+	if g.Input.JustPressed(glow.KeyDown) || g.Input.JustPressed(glow.KeyS) {
+		g.InventoryCursorY++
+		if g.InventoryCursorY > 2 {
+			g.InventoryCursorY = 2
+		}
+	}
+	if g.Input.JustPressed(glow.KeyLeft) || g.Input.JustPressed(glow.KeyA) {
+		g.InventoryCursorX--
+		if g.InventoryCursorX < 0 {
+			g.InventoryCursorX = 0
+		}
+	}
+	if g.Input.JustPressed(glow.KeyRight) || g.Input.JustPressed(glow.KeyD) {
+		g.InventoryCursorX++
+		if g.InventoryCursorX > 4 {
+			g.InventoryCursorX = 4
+		}
+	}
+
+	// Assign to A (Z key) or B (X key)
+	idx := g.InventoryCursorY*5 + g.InventoryCursorX
+	items := g.Player.Inventory.OwnedItemsList()
+	if idx < len(items) {
+		item := items[idx]
+		if g.Input.JustPressed(glow.KeyJ) {
+			g.Player.Inventory.ButtonA = item
+		}
+		if g.Input.JustPressed(glow.KeyK) {
+			g.Player.Inventory.ButtonB = item
+		}
+	}
+}
+
 func (g *Game) updatePlaying(dt float64) {
-	// Check pause
-	if g.Input.JustPressed(glow.KeyEscape) {
+	// Check pause (Enter)
+	if g.Input.JustPressed(glow.KeyEnter) {
 		g.State = StatePaused
+		return
+	}
+
+	// Check inventory (Tab)
+	if g.Input.JustPressed(glow.KeyTab) {
+		g.State = StateInventory
 		return
 	}
 
@@ -317,18 +507,24 @@ func (g *Game) updatePlaying(dt float64) {
 		}
 	}
 
-	// Check for sword swing input (Space/Z)
-	if (g.Input.JustPressed(glow.KeySpace) || g.Input.JustPressed(glow.KeyZ)) && !g.Player.Sword.Active {
+	// Space = interact (talk, read signs, open chests, use doors)
+	if g.Input.JustPressed(glow.KeySpace) {
 		if g.tryInteractNPC() {
 			return
 		}
 		if g.tryInteractDoor() {
 			return
 		}
-		if g.Player.HasSword {
-			g.Player.Sword.Start(g.Player.Dir)
-			g.Audio.PlaySwordSwing()
-		}
+	}
+
+	// Z = A button (use equipped item)
+	if g.Input.JustPressed(glow.KeyJ) && !g.Player.Sword.Active {
+		g.useEquippedItem(g.Player.Inventory.ButtonA)
+	}
+
+	// X = B button (use equipped item)
+	if g.Input.JustPressed(glow.KeyK) && !g.Player.Sword.Active {
+		g.useEquippedItem(g.Player.Inventory.ButtonB)
 	}
 
 	// Combat: check sword hits
@@ -419,6 +615,20 @@ func (g *Game) updatePlaying(dt float64) {
 	g.Player.UpdateAnimation(dt)
 }
 
+// useEquippedItem activates the item assigned to a button.
+func (g *Game) useEquippedItem(item entity.EquipItemID) {
+	switch item {
+	case entity.EquipSword:
+		if g.Player.HasSword || g.Player.Inventory.SwordLevel > 0 {
+			g.Player.Sword.Start(g.Player.Dir)
+			g.Audio.PlaySwordSwing()
+		}
+	// Other items will be implemented in later phases
+	case entity.EquipNone:
+		// nothing
+	}
+}
+
 func (g *Game) handleEdgeCrossing(crossX, crossY int) {
 	dirX, dirY := 0, 0
 	if crossX != 0 {
@@ -506,11 +716,13 @@ func (g *Game) spawnScreenEntities() {
 		}
 		for _, ns := range g.CurrentInterior.NPCSpawns {
 			npc := entity.NewNPC(
+				ns.ID,
 				float64(ns.TileX*config.TileSize)+1,
 				float64(ns.TileY*config.TileSize)+1,
 				entity.Direction(ns.Dir),
 				ns.Name,
 				ns.Dialogue,
+				ns.ConditionalDialogues,
 			)
 			g.NPCs = append(g.NPCs, npc)
 		}
@@ -551,11 +763,13 @@ func (g *Game) spawnScreenEntities() {
 
 	for _, ns := range screen.NPCSpawns {
 		npc := entity.NewNPC(
+			ns.ID,
 			float64(ns.TileX*config.TileSize)+1,
 			float64(ns.TileY*config.TileSize)+1,
 			entity.Direction(ns.Dir),
 			ns.Name,
 			ns.Dialogue,
+			ns.ConditionalDialogues,
 		)
 		g.NPCs = append(g.NPCs, npc)
 	}
@@ -651,6 +865,15 @@ func (g *Game) applyItemEffect(item *entity.Item) {
 		g.Player.Inventory.Keys++
 	case entity.ItemSword:
 		g.Player.HasSword = true
+		g.Player.Inventory.OwnedItems[entity.EquipSword] = true
+		if g.Player.Inventory.SwordLevel == 0 {
+			g.Player.Inventory.SwordLevel = 1
+		}
+		// Auto-assign sword to A if nothing assigned
+		if g.Player.Inventory.ButtonA == entity.EquipNone {
+			g.Player.Inventory.ButtonA = entity.EquipSword
+		}
+		g.Quest.SetFlag("got_sword")
 	case entity.ItemHeartContainer:
 		g.Player.MaxHP += 2
 		g.Player.HP = g.Player.MaxHP
@@ -717,12 +940,38 @@ func (g *Game) checkProjectileCollisions() {
 	}
 }
 
+// getActiveDialogue returns the appropriate dialogue lines for an NPC,
+// checking conditional dialogues first, then falling back to default.
+func (g *Game) getActiveDialogue(npc *entity.NPC) []string {
+	for _, d := range npc.Dialogues {
+		if CheckCondition(d.Condition, g.Quest, &g.Player.Inventory) {
+			return d.Lines
+		}
+	}
+	return npc.Dialogue
+}
+
 func (g *Game) tryInteractNPC() bool {
 	for _, npc := range g.NPCs {
 		if system.ProximityCheck(g.Player.CenterX(), g.Player.CenterY(),
 			npc.CenterX(), npc.CenterY(), config.InteractRadius) {
-			g.Dialogue.Start(npc)
+			// Use conditional dialogue
+			activeLines := g.getActiveDialogue(npc)
+			g.Dialogue.StartWithLines(npc, activeLines)
 			g.State = StateDialogue
+
+			// Set quest flags based on NPC ID
+			switch npc.ID {
+			case "tarin":
+				g.Quest.SetFlag("met_tarin")
+			case "marin":
+				g.Quest.SetFlag("talked_marin")
+			case "meowmeow":
+				g.Quest.SetFlag("met_meowmeow")
+			case "librarian":
+				g.Quest.SetFlag("visited_library")
+			}
+
 			return true
 		}
 	}
@@ -772,7 +1021,19 @@ func (g *Game) checkDoorEntry() {
 			for i := range g.CurrentInterior.DoorLinks {
 				dl := &g.CurrentInterior.DoorLinks[i]
 				if dl.DoorTileX == px && dl.DoorTileY == py {
-					interior, ok := g.Interiors[dl.InteriorID]
+					target := dl.InteriorID
+					// Handle "interior:X" format
+					if len(target) > 9 && target[:9] == "interior:" {
+						target = target[9:]
+					}
+					if target == "overworld" {
+						// Exit to overworld
+						g.PendingExitLink = g.ReturnLink
+						g.Transition.StartFade()
+						g.Audio.PlayDoorOpen()
+						return
+					}
+					interior, ok := g.Interiors[target]
 					if !ok {
 						continue
 					}
@@ -821,6 +1082,7 @@ func (g *Game) checkDoorEntry() {
 func (g *Game) completeFadeTransition() {
 	if g.PendingInterior != nil {
 		g.InInterior = true
+		g.Location = LocationInterior
 		g.CurrentInterior = g.PendingInterior
 		g.ReturnLink = g.PendingDoorLink
 		g.Player.X = g.PendingDoorLink.SpawnX
@@ -831,6 +1093,7 @@ func (g *Game) completeFadeTransition() {
 		g.SaveGame()
 	} else if g.PendingExitLink != nil {
 		g.InInterior = false
+		g.Location = LocationOverworld
 		g.CurrentInterior = nil
 		g.Player.X = g.PendingExitLink.ExitX
 		g.Player.Y = g.PendingExitLink.ExitY
@@ -931,13 +1194,18 @@ func (g *Game) Draw(canvas *glow.Canvas) {
 
 	// Dialogue box on top
 	if g.State == StateDialogue && g.Dialogue.Active {
-		render.DrawDialogueBox(sc, g.Dialogue.NPC.Name, g.Dialogue.NPC.Dialogue,
+		render.DrawDialogueBox(sc, g.Dialogue.NPC.Name, g.Dialogue.Lines,
 			g.Dialogue.CurrentLine, g.Dialogue.HasMore())
 	}
 
 	// Pause overlay
 	if g.State == StatePaused {
 		render.DrawPauseOverlay(sc)
+	}
+
+	// Inventory overlay
+	if g.State == StateInventory {
+		render.DrawInventoryScreen(sc, &g.Player.Inventory, g.InventoryCursorX, g.InventoryCursorY)
 	}
 }
 
