@@ -4,7 +4,7 @@ const (
 	TileSize    = 16
 	ScreenGridW = 16
 	ScreenGridH = 12
-	HUDHeight   = 16
+	HUDHeight   = 32
 
 	PlayAreaWidth  = ScreenGridW * TileSize // 256
 	PlayAreaHeight = ScreenGridH * TileSize // 192
@@ -19,8 +19,6 @@ const (
 	WalkFrames    = 4
 
 	TransitionDuration = 0.5 // seconds for screen scroll transition
-	OverworldW         = 3
-	OverworldH         = 3
 
 	// Combat
 	SwordDuration   = 0.2
@@ -56,4 +54,10 @@ const (
 	// Menu
 	GameOverDelay = 2.0
 	VictoryDelay  = 3.0
+)
+
+// Overworld dimensions — set dynamically by the map loader.
+var (
+	OverworldW = 16
+	OverworldH = 16
 )
