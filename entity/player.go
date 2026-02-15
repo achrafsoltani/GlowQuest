@@ -16,18 +16,33 @@ type Player struct {
 	InvTimer  float64
 	HasSword  bool
 	Inventory Inventory
+
+	// Expanded mechanics (Phase 7+)
+	Jumping    bool
+	JumpTimer  float64
+	JumpHeight float64
+	Dashing    bool
+	DashTimer  float64
+	DashDir    Direction
+	Swimming   bool
+	Lifting    bool
+	Pushing    bool
+	PushTimer  float64
+	UsingItem  bool
+	ItemUseTimer float64
 }
 
 func NewPlayer(x, y float64) *Player {
 	return &Player{
-		X:      x,
-		Y:      y,
-		Width:  config.PlayerSize,
-		Height: config.PlayerSize,
-		Dir:    DirDown,
-		Speed:  config.PlayerSpeed,
-		HP:     config.MaxHP,
-		MaxHP:  config.MaxHP,
+		X:         x,
+		Y:         y,
+		Width:     config.PlayerSize,
+		Height:    config.PlayerSize,
+		Dir:       DirDown,
+		Speed:     config.PlayerSpeed,
+		HP:        config.MaxHP,
+		MaxHP:     config.MaxHP,
+		Inventory: NewInventory(),
 	}
 }
 

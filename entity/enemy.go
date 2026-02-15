@@ -5,10 +5,25 @@ import "github.com/AchrafSoltani/GlowQuest/config"
 type EnemyType int
 
 const (
-	EnemyOctorok EnemyType = iota
-	EnemyMoblin
-	EnemyStalfos
-	EnemyBoss
+	EnemyOctorok  EnemyType = iota // 0
+	EnemyMoblin                    // 1
+	EnemyStalfos                   // 2
+	EnemyBoss                      // 3
+
+	// Extended types for future phases
+	EnemyKeese     // 4
+	EnemyGel       // 5
+	EnemyZol       // 6
+	EnemyBladeTrap // 7
+	EnemySpark     // 8
+	EnemyWizzrobe  // 9
+	EnemyIronMask  // 10
+	EnemyLikeLike  // 11
+	EnemyGoomba    // 12 (side-scrolling)
+	EnemyPiranha   // 13 (side-scrolling)
+	EnemyZora      // 14
+	EnemyArmos     // 15
+	EnemyLanmola   // 16
 )
 
 type Enemy struct {

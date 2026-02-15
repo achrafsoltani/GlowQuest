@@ -29,7 +29,7 @@ func TileCollision(screen *world.Screen, x, y float64, w, h int) bool {
 	for gy := startY; gy <= endY; gy++ {
 		for gx := startX; gx <= endX; gx++ {
 			tile := screen.TileAt(gx, gy)
-			if !tile.IsPassable() {
+			if !world.TileProps[tile].Passable {
 				tileX := float64(gx) * ts
 				tileY := float64(gy) * ts
 				if AABBOverlap(x, y, fw, fh, tileX, tileY, ts, ts) {

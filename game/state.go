@@ -9,4 +9,5 @@ const (
 	StateGameOver
 	StateDialogue
 	StateVictory
+	StateInventory
 )
