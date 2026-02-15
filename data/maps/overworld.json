@@ -1,0 +1,21 @@
+{
+  "width": 16,
+  "height": 16,
+  "start_screen": { "x": 8, "y": 8 },
+  "start_pos": { "x": 113, "y": 113 },
+  "start_interior": "tarins_house",
+  "regions": {
+    "mabe_village": {
+      "name": "Mabe Village",
+      "screens": [[6,8],[7,8],[8,8],[9,8],[8,9]]
+    },
+    "toronbo_shores": {
+      "name": "Toronbo Shores",
+      "screens": [[7,11],[8,11],[9,11],[7,12],[8,12]]
+    },
+    "mysterious_forest": {
+      "name": "Mysterious Forest",
+      "screens": [[7,7],[8,7],[9,7]]
+    }
+  }
+}
